@@ -1,6 +1,7 @@
 package cn.marci.raft.rpc.netty;
 
 import cn.marci.raft.common.Endpoint;
+import cn.marci.raft.common.Lifecycle;
 import cn.marci.raft.rpc.RpcException;
 import io.netty.channel.Channel;
 import io.netty.util.AttributeKey;
@@ -13,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Getter
 @Slf4j
-public class Connection {
+public class Connection implements Lifecycle {
 
     public static final AttributeKey<Connection> CONNECTION_KEY = AttributeKey.valueOf("connection");
 
@@ -42,4 +43,11 @@ public class Connection {
         return invokeFutureMap.remove(id);
     }
 
+    @Override
+    public void stop() {
+        channel.close();
+        if (!invokeFutureMap.isEmpty()) {
+            invokeFutureMap.values().forEach(f -> f.completeExceptionally(new RpcException("connection closed")));
+        }
+    }
 }

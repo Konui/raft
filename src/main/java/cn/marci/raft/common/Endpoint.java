@@ -2,8 +2,10 @@ package cn.marci.raft.common;
 
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 @Data
+@ToString
 @EqualsAndHashCode
 public class Endpoint {
 

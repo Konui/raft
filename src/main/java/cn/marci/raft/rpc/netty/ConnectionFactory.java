@@ -2,6 +2,7 @@ package cn.marci.raft.rpc.netty;
 
 import cn.marci.raft.common.Endpoint;
 import cn.marci.raft.common.Lifecycle;
+import cn.marci.raft.rpc.RpcException;
 import cn.marci.raft.serializer.SerializerFactory;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
@@ -13,11 +14,13 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.timeout.IdleStateHandler;
+import lombok.extern.slf4j.Slf4j;
 
 import java.net.InetSocketAddress;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+@Slf4j
 public class ConnectionFactory implements Lifecycle {
 
     private Bootstrap bootstrap;
@@ -61,7 +64,18 @@ public class ConnectionFactory implements Lifecycle {
         ChannelFuture future = bootstrap.connect(new InetSocketAddress(endpoint.getIp(), endpoint.getPort()));
 
         future.awaitUninterruptibly();
-        //TODO 校验future完成状态
+        if (!future.isDone()) {
+            log.error("Create connection timeout, endpoint:{}", endpoint);
+            throw new RpcException("Create connection timeout");
+        }
+        if (future.isCancelled()) {
+            log.error("Create connection cancelled by user, endpoint:{}", endpoint);
+            throw new RpcException("Create connection cancelled by user");
+        }
+        if (!future.isSuccess()) {
+            log.error("Create connection error, endpoint:{}", endpoint);
+            throw new RpcException("Create connection error", future.cause());
+        }
         return new Connection(endpoint, future.channel());
     }
 }

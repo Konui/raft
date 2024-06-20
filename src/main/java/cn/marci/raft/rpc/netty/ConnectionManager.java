@@ -2,10 +2,10 @@ package cn.marci.raft.rpc.netty;
 
 import cn.marci.raft.common.Endpoint;
 
+import java.security.interfaces.EdECKey;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ConnectionManager {
-    //TODO 获取连接前校验，连接失效后移除
 
     ConcurrentHashMap<Endpoint, Connection> connections = new ConcurrentHashMap<>();
 
@@ -16,7 +16,13 @@ public class ConnectionManager {
     }
 
     public Connection getOrCreate(Endpoint endpoint) {
-        return connections.computeIfAbsent(endpoint, connectionFactory::createConnection);
+        Connection connection = connections.computeIfAbsent(endpoint, connectionFactory::createConnection);
+        if (!connection.getChannel().isActive()) {
+            connection.stop();
+            connection = connectionFactory.createConnection(endpoint);
+            connections.put(endpoint, connection);
+        }
+        return connection;
     }
 
 }
