@@ -1,28 +1,22 @@
 package cn.marci.raft.rpc.netty;
 
-import cn.marci.raft.rpc.RpcProcessor;
 import cn.marci.raft.rpc.RpcRequest;
 import cn.marci.raft.rpc.RpcResponse;
+import cn.marci.raft.rpc.RpcServer;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Slf4j
 @ChannelHandler.Sharable
 public class NettyServerHandler extends ChannelInboundHandlerAdapter {
-    private Map<String, RpcProcessor> processorMap;
+    private final Map<String, RpcServer.MethodMetadata> processorMap;
 
-    public NettyServerHandler(List<RpcProcessor> processors) {
-        if (processors == null || processors.isEmpty()) {
-            throw new IllegalArgumentException("processors cannot be null or empty");
-        }
-        processorMap = processors.stream()
-                .collect(Collectors.toMap(RpcProcessor::signature, processor -> processor));
+    public NettyServerHandler(Map<String, RpcServer.MethodMetadata> processorMap) {
+        this.processorMap = processorMap;
     }
 
     @Override
@@ -43,12 +37,13 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
 
     private Object process(RpcRequest request) {
         Long id = request.getId();
-        RpcProcessor rpcProcessor = processorMap.get(request.getSignature());
-        if (rpcProcessor == null) {
+        RpcServer.MethodMetadata methodMetadata = processorMap.get(request.getSignature());
+        if (methodMetadata == null) {
+            log.error("can't find [{}] signature processor", request.getSignature());
             return new RpcResponse(id, false, null, String.format("can't find [%s] signature processor", request.getSignature()), null);
         }
         try {
-            Object data = rpcProcessor.process(request.getArgs());
+            Object data = methodMetadata.invoke(request.getArgs());
             return new RpcResponse(id, data);
         } catch (Exception e) {
             log.error("rpc process error", e);

@@ -29,7 +29,7 @@ public class NettyClientHandler extends ChannelInboundHandlerAdapter {
             if (response.isSuccess()) {
                 future.complete(response.getData());
             } else {
-                future.completeExceptionally(Optional.of(response.getThrowable())
+                future.completeExceptionally(Optional.ofNullable(response.getThrowable())
                         .orElseGet(() -> new RpcException("server error, msg: " + response.getMsg())));
                 log.error("rpc invoke error in server, error msg:{}", response.getMsg(), response.getThrowable());
             }

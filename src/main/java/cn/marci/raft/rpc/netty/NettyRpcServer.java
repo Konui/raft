@@ -1,6 +1,5 @@
 package cn.marci.raft.rpc.netty;
 
-import cn.marci.raft.rpc.RpcProcessor;
 import cn.marci.raft.rpc.RpcServer;
 import cn.marci.raft.serializer.SerializerFactory;
 import io.netty.bootstrap.ServerBootstrap;
@@ -11,44 +10,21 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 @Slf4j
-public class NettyRpcServer implements RpcServer {
-
-    private final int port;
+public class NettyRpcServer extends RpcServer {
 
     private final SerializerFactory serializerFactory;
 
-    private final List<RpcProcessor> processors;
-
-    private final AtomicBoolean running = new AtomicBoolean(false);
-
     private Channel channel;
 
-    public NettyRpcServer(int port, SerializerFactory serializerFactory, List<RpcProcessor> processors) {
-        this.port = port;
+    public NettyRpcServer(int port, SerializerFactory serializerFactory) {
+        super(port);
         this.serializerFactory = serializerFactory;
-        this.processors = processors;
     }
 
     @Override
-    public void start() {
-        if (running.compareAndSet(false, true)) {
-            Thread thread = new Thread(this::runServer);
-            thread.setDaemon(true);
-            thread.setName("NettyRpcServer");
-            thread.start();
-            log.info("rpc server stated on port {}", port);
-        }
-    }
-
-    @Override
-    public void stop() {
-        if (running.compareAndSet(true, false)) {
-            channel.close();
-        }
+    public void close() {
+        channel.close();
     }
 
     public void runServer() {
@@ -70,7 +46,7 @@ public class NettyRpcServer implements RpcServer {
                             socketChannel.pipeline()
                                     .addLast(new NettyRpcDecoder(serializerFactory.getInstance()))
                                     .addLast(new NettyRpcEncoder(serializerFactory.getInstance()))
-                                    .addLast(new NettyServerHandler(processors));
+                                    .addLast(new NettyServerHandler(services));
                         }
                     });
 
