@@ -11,7 +11,7 @@ import cn.marci.raft.rpc.netty.ConnectionFactory;
 import cn.marci.raft.rpc.netty.ConnectionManager;
 import cn.marci.raft.rpc.netty.NettyRpcClient;
 import cn.marci.raft.rpc.netty.NettyRpcServer;
-import cn.marci.raft.serializer.SerializerFactory;
+import cn.marci.raft.serializer.SerializerSingleFactory;
 
 import java.util.concurrent.locks.LockSupport;
 
@@ -21,7 +21,7 @@ public class RaftServer {
         RaftConf conf = new RaftConf();
 
         //rpc client端
-        SerializerFactory serializerFactory = new SerializerFactory();
+        SerializerSingleFactory serializerFactory = new SerializerSingleFactory();
         ConnectionFactory connectionFactory = new ConnectionFactory(serializerFactory);
         connectionFactory.start();
         NettyRpcClient nettyRpcClient = new NettyRpcClient(new ConnectionManager(connectionFactory));
@@ -31,6 +31,7 @@ public class RaftServer {
 
         //node
         Node node = new NodeImpl(conf, rpcService);
+        node.start();
 
         //rpc server端
         RpcServer rpcServer = new NettyRpcServer(conf.getRpcServerPort(), serializerFactory);

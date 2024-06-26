@@ -7,7 +7,7 @@
     <groupId>cn.marci</groupId>
     <artifactId>raft</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <packaging>pom</packaging>
+    <packaging>jar</packaging>
 
     <properties>
         <maven.compiler.source>22</maven.compiler.source>

@@ -50,15 +50,19 @@ public class NodeImpl implements Node {
         if (conf.getNodes() == null || conf.getNodes().isEmpty()) {
             throw new IllegalArgumentException("raft.nodes is null or empty");
         }
+        this.id = new NodeId(null, new Endpoint(NetUtils.getLocalIp(), conf.getRpcServerPort()));
         this.cluster = Arrays.stream(conf.getNodes().split(",|;"))
                 .map(Endpoint::new)
                 .map(endpoint -> new NodeId(null, endpoint))
+                .filter(nodeId -> !nodeId.equals(id))
                 .collect(Collectors.toList());
+        this.electTimer = new ElectTimer(this);
+        this.sendHeartbeatTimer = new SendHeartbeatTimer(this);
     }
 
     @Override
     public void start() {
-        id = new NodeId(null, new Endpoint(NetUtils.getLocalIp(), conf.getRpcServerPort()));
+        electTimer.start();
     }
 
     @Override
@@ -154,5 +158,10 @@ public class NodeImpl implements Node {
     @Override
     public void voteFor(Endpoint endpoint) {
         votedFor = endpoint;
+    }
+
+    @Override
+    public Endpoint getVotedFor() {
+        return votedFor;
     }
 }

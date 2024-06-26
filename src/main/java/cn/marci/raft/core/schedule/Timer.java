@@ -13,7 +13,7 @@ public abstract class Timer implements Lifecycle {
 
     protected final ScheduledThreadPoolExecutor scheduledThreadPoolExecutor = new ScheduledThreadPoolExecutor(1, ThreadPoolUtils.getThreadFactory(true, timerName()));
 
-    protected ScheduledFuture lastFuture;
+    protected volatile ScheduledFuture lastFuture;
 
     @Override
     public void start() {
@@ -38,7 +38,10 @@ public abstract class Timer implements Lifecycle {
     private void schedule() {
         long delay = nextDelay();
         log.debug("{} timer will run after {} ms", timerName(), delay);
-        lastFuture = scheduledThreadPoolExecutor.schedule(this::run, delay, TimeUnit.MILLISECONDS);
+        lastFuture = scheduledThreadPoolExecutor.schedule(() -> {
+            run();
+            schedule();
+        }, delay, TimeUnit.MILLISECONDS);
     }
 
     protected String timerName() {

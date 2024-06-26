@@ -4,9 +4,11 @@ import cn.marci.raft.core.node.NodeId;
 import lombok.Builder;
 import lombok.Data;
 
+import java.io.Serializable;
+
 @Data
 @Builder
-public class RequestVoteDTO {
+public class RequestVoteDTO implements Serializable {
 
     private long term;
 

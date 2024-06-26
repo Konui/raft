@@ -1,7 +1,7 @@
 package cn.marci.raft.rpc.netty;
 
 import cn.marci.raft.rpc.RpcServer;
-import cn.marci.raft.serializer.SerializerFactory;
+import cn.marci.raft.serializer.SerializerSingleFactory;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.*;
@@ -13,11 +13,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class NettyRpcServer extends RpcServer {
 
-    private final SerializerFactory serializerFactory;
+    private final SerializerSingleFactory serializerFactory;
 
     private Channel channel;
 
-    public NettyRpcServer(int port, SerializerFactory serializerFactory) {
+    public NettyRpcServer(int port, SerializerSingleFactory serializerFactory) {
         super(port);
         this.serializerFactory = serializerFactory;
     }

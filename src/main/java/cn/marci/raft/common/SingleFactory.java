@@ -1,12 +1,12 @@
 package cn.marci.raft.common;
 
-public abstract class Factory<T> {
+public abstract class SingleFactory<T> {
 
     protected volatile T INSTANCE;
 
     public T getInstance() {
         if (INSTANCE == null) {
-            synchronized (Factory.class) {
+            synchronized (SingleFactory.class) {
                 if (INSTANCE == null) {
                     INSTANCE = createInstance();
                 }

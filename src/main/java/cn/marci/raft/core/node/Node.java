@@ -19,4 +19,7 @@ public interface Node extends Lifecycle {
     void appendEntries(List<Entry> entries);
 
     void voteFor(Endpoint endpoint);
+
+    Endpoint getVotedFor();
+
 }

@@ -6,7 +6,7 @@ import cn.marci.raft.rpc.netty.ConnectionFactory;
 import cn.marci.raft.rpc.netty.ConnectionManager;
 import cn.marci.raft.rpc.netty.NettyRpcClient;
 import cn.marci.raft.rpc.netty.NettyRpcServer;
-import cn.marci.raft.serializer.SerializerFactory;
+import cn.marci.raft.serializer.SerializerSingleFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +28,7 @@ public class RpcTest {
 
     @Test
     public void startRpcServer() {
-        NettyRpcServer nettyRpcServer = new NettyRpcServer(8091, new SerializerFactory());
+        NettyRpcServer nettyRpcServer = new NettyRpcServer(8091, new SerializerSingleFactory());
         nettyRpcServer.registerService(TestInterface.class, new TestImpl());
         nettyRpcServer.start();
         LockSupport.park();
@@ -37,7 +37,7 @@ public class RpcTest {
 
     @Test
     public void startRpcClientAndTest() {
-        ConnectionFactory connectionFactory = new ConnectionFactory(new SerializerFactory());
+        ConnectionFactory connectionFactory = new ConnectionFactory(new SerializerSingleFactory());
         connectionFactory.start();
         NettyRpcClient nettyRpcClient = new NettyRpcClient(new ConnectionManager(connectionFactory));
 

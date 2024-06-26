@@ -7,7 +7,9 @@ import cn.marci.raft.core.rpc.dto.AppendEntriesDTO;
 import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
 import cn.marci.raft.core.rpc.dto.RequestVoteDTO;
 import cn.marci.raft.core.rpc.dto.RequestVoteResponse;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class RpcServiceImpl implements RpcService {
 
     private final Node node;
@@ -29,10 +31,14 @@ public class RpcServiceImpl implements RpcService {
 
     @Override
     public RequestVoteResponse requestVote(Endpoint endpoint, RequestVoteDTO requestVoteDTO) {
-        if (requestVoteDTO.getTerm() <= node.getTerm()) {
-            return new RequestVoteResponse(node.getTerm(), false);
+        RequestVoteResponse resp = null;
+        if (requestVoteDTO.getTerm() <= node.getTerm() || node.getVotedFor() != null) {
+            resp = new RequestVoteResponse(node.getTerm(), false);
+        } else {
+            node.voteFor(endpoint);
+            resp = new RequestVoteResponse(node.getTerm(), true);
         }
-        node.voteFor(endpoint);
-        return new RequestVoteResponse(node.getTerm(), true);
+        log.info("endpoint: {}, resp: {}", endpoint, resp);
+        return resp;
     }
 }

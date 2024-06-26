@@ -3,12 +3,16 @@ package cn.marci.raft.core.node;
 import cn.marci.raft.common.Endpoint;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.ToString;
+
+import java.io.Serializable;
 
 @Data
 @ToString
 @AllArgsConstructor
-public class NodeId {
+@EqualsAndHashCode
+public class NodeId implements Serializable {
 
     private String group;
 

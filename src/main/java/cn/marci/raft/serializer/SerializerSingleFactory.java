@@ -1,9 +1,9 @@
 package cn.marci.raft.serializer;
 
-import cn.marci.raft.common.Factory;
+import cn.marci.raft.common.SingleFactory;
 import cn.marci.raft.serializer.hessian.HessianSerializer;
 
-public class SerializerFactory extends Factory<Serializer> {
+public class SerializerSingleFactory extends SingleFactory<Serializer> {
 
     @Override
     protected Serializer createInstance() {

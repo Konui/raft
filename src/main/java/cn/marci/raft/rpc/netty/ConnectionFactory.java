@@ -3,7 +3,7 @@ package cn.marci.raft.rpc.netty;
 import cn.marci.raft.common.Endpoint;
 import cn.marci.raft.common.Lifecycle;
 import cn.marci.raft.rpc.RpcException;
-import cn.marci.raft.serializer.SerializerFactory;
+import cn.marci.raft.serializer.SerializerSingleFactory;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelFuture;
@@ -25,9 +25,9 @@ public class ConnectionFactory implements Lifecycle {
 
     private Bootstrap bootstrap;
 
-    private final SerializerFactory serializerFactory;
+    private final SerializerSingleFactory serializerFactory;
 
-    public ConnectionFactory(SerializerFactory serializerFactory) {
+    public ConnectionFactory(SerializerSingleFactory serializerFactory) {
         this.serializerFactory = serializerFactory;
     }
 
