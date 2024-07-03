@@ -2,6 +2,7 @@ package cn.marci.raft.core.rpc.dto;
 
 import cn.marci.raft.core.log.Entry;
 import cn.marci.raft.core.node.NodeId;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
@@ -10,6 +11,7 @@ import java.util.List;
 
 @Data
 @Builder
+@AllArgsConstructor
 public class AppendEntriesDTO implements Serializable {
 
     private long term;

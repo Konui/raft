@@ -22,12 +22,17 @@ public class NettyRpcClient implements RpcClient {
 
     @Override
     public Object invokeSync(Endpoint endpoint, long timeout, String signature, Object... args) {
+        long startTime = System.currentTimeMillis();
         CompletableFuture future = invoke(endpoint, signature, args);
         try {
             return future.get(timeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             log.error("RPC invoke error: {}", e.getMessage());
             throw new RpcException(e);
+        } finally {
+            if (log.isDebugEnabled()) {
+                log.debug("RPC invoke cost: {}ms", System.currentTimeMillis() - startTime);
+            }
         }
     }
 

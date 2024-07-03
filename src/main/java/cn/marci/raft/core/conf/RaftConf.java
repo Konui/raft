@@ -12,4 +12,10 @@ public class RaftConf {
 
     private String nodes = PropertiesManager.getConf(RAFT_NODES);
 
+    private long electionMinTimeout = PropertiesManager.getLong(RAFT_ELECTION_MIN_TIMEOUT, 150);
+
+    private long electionMaxTimeout = PropertiesManager.getLong(RAFT_ELECTION_MAX_TIMEOUT, 350);
+
+    private long heartbeatInterval = PropertiesManager.getLong(RAFT_HEARTBEAT_INTERVAL, 100);
+
 }

@@ -11,9 +11,21 @@ public class ElectTimer extends Timer {
 
     private final Random random = new Random();
 
+    private final long electionMinTimout;
 
-    public ElectTimer(Node node) {
+    private final long electionMaxTimeout;
+
+    public ElectTimer(Node node, long electionMinTimout, long electionMaxTimeout) {
+        if (electionMinTimout > electionMaxTimeout) {
+            throw new IllegalArgumentException("electionMinTimout must be less than or equal to electionMaxTimout");
+        }
+        if (electionMinTimout < 0) {
+            throw new IllegalArgumentException("electionMinTimout must be non-negative");
+        }
+
         this.node = node;
+        this.electionMinTimout = electionMinTimout;
+        this.electionMaxTimeout = electionMaxTimeout;
     }
 
     @Override
@@ -23,6 +35,6 @@ public class ElectTimer extends Timer {
 
     @Override
     protected long nextDelay() {
-        return random.nextLong(150, 350);
+        return random.nextLong(electionMinTimout, electionMaxTimeout);
     }
 }

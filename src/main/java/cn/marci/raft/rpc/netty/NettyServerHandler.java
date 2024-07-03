@@ -23,11 +23,11 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof RpcRequest request) {
             if (log.isDebugEnabled()) {
-                log.info("receive rpc request: {}", request);
+                log.debug("receive rpc [{}] request: {}", ctx.channel().remoteAddress(), request);
             }
             Object resp = process(request);
             if (log.isDebugEnabled()) {
-                log.info("send rpc response: {}", resp);
+                log.debug("send rpc [{}] response: {}", ctx.channel().remoteAddress(), resp);
             }
             ctx.channel().writeAndFlush(resp);
         } else {

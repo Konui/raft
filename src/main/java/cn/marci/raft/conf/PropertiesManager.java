@@ -51,6 +51,12 @@ public class PropertiesManager {
                 .orElse(defaultValue);
     }
 
+    public static long getLong(String key, long defaultValue) {
+        return Optional.ofNullable(getProperty(key))
+                .map(Long::parseLong)
+                .orElse(defaultValue);
+    }
+
     private static String getProperty(String key) {
         String property = System.getenv(key);
         if (property == null) {

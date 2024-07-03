@@ -18,7 +18,7 @@ public class NettyClientHandler extends ChannelInboundHandlerAdapter {
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof RpcResponse response) {
             if (log.isDebugEnabled()) {
-                log.info("receive rpc response, resp:{}", response);
+                log.debug("receive rpc [{}] response, resp:{}", ctx.channel().remoteAddress(), response);
             }
             Connection connection = ctx.channel().attr(Connection.CONNECTION_KEY).get();
             CompletableFuture future = connection.remove(response.getId());

@@ -1,5 +1,6 @@
 package cn.marci.raft.common;
 
+import cn.marci.raft.utils.NetUtils;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -29,7 +30,12 @@ public class Endpoint implements Serializable {
             throw new IllegalArgumentException("invalid host format");
         }
 
-        this.ip = split[0];
+        ;
+        if ("127.0.0.1".equals(split[0]) || "localhost".equalsIgnoreCase(split[0])) {
+            ip = NetUtils.getLocalIp();
+        } else {
+            ip = split[0];
+        }
         this.port = Integer.parseInt(split[1]);
     }
 }

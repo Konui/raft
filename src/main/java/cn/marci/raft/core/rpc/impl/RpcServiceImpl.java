@@ -20,25 +20,21 @@ public class RpcServiceImpl implements RpcService {
 
     @Override
     public AppendEntriesResponse appendEntries(Endpoint endpoint, AppendEntriesDTO appendEntries) {
-        // 过期leader请求，不予处理
-        if (appendEntries.getTerm() < node.getTerm()) {
-            return new AppendEntriesResponse(node.getTerm(), false);
+        long start = System.currentTimeMillis();
+        try {
+            return node.handleAppendEntries(appendEntries);
+        } finally {
+            log.debug("appendEntries cost: {}ms", System.currentTimeMillis() - start);
         }
-        node.resetElectionTimeout();
-        //TODO 添加日志
-        return new AppendEntriesResponse(node.getTerm(), true);
     }
 
     @Override
     public RequestVoteResponse requestVote(Endpoint endpoint, RequestVoteDTO requestVoteDTO) {
-        RequestVoteResponse resp = null;
-        if (requestVoteDTO.getTerm() <= node.getTerm() || node.getVotedFor() != null) {
-            resp = new RequestVoteResponse(node.getTerm(), false);
-        } else {
-            node.voteFor(endpoint);
-            resp = new RequestVoteResponse(node.getTerm(), true);
+        long start = System.currentTimeMillis();
+        try {
+            return node.handleVote(requestVoteDTO);
+        } finally {
+            log.debug("requestVote cost: {}ms", System.currentTimeMillis() - start);
         }
-        log.info("endpoint: {}, resp: {}", endpoint, resp);
-        return resp;
     }
 }
