@@ -74,12 +74,15 @@ public class NodeImpl implements Node {
 
     @Override
     public void startElect() {
-        log.info("start elect");
+        if (role != RoleEnum.FOLLOWER) {
+            return;
+        }
         lock.writeLock().lock();
         try {
             if (role != RoleEnum.FOLLOWER) {
                 return;
             }
+            log.info("start elect");
             term += 1;
             votedFor = id;
             role = RoleEnum.CANDIDATE;
@@ -161,11 +164,14 @@ public class NodeImpl implements Node {
                 if (appendEntries.getTerm() > term) {
                     term = appendEntries.getTerm();
                     votedFor = null;
+                    leaderId = null;
                     if (!isLeaderMsg) {
-                        leaderId = appendEntries.getLeaderId();
                         role = RoleEnum.FOLLOWER;
                         sendHeartbeatTimer.cancel();
                     }
+                }
+                if (leaderId == null) {
+                    log.info("cluster has new leader or term, term:{}, leaderId: {}", term, appendEntries.getLeaderId());
                 }
                 leaderId = appendEntries.getLeaderId();
                 return new AppendEntriesResponse(term, true);
@@ -185,6 +191,7 @@ public class NodeImpl implements Node {
                     term = requestVoteDTO.getTerm();
                     votedFor = requestVoteDTO.getCandidateId();
                     role = RoleEnum.FOLLOWER;
+                    leaderId = null;
                     sendHeartbeatTimer.cancel();
                     electTimer.reset();
                     return new RequestVoteResponse(requestVoteDTO.getTerm(), true);

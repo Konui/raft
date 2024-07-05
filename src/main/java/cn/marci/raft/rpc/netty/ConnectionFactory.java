@@ -73,7 +73,11 @@ public class ConnectionFactory implements Lifecycle {
             throw new RpcException("Create connection cancelled by user");
         }
         if (!future.isSuccess()) {
-            log.error("Create connection error, endpoint:{}", endpoint);
+            if (log.isDebugEnabled()) {
+                log.error("Create connection error, endpoint:{}", endpoint, future.cause());
+            } else {
+                log.error("Create connection error, endpoint:{}", endpoint);
+            }
             throw new RpcException("Create connection error", future.cause());
         }
         return new Connection(endpoint, future.channel());
