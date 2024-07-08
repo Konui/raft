@@ -4,6 +4,7 @@ import cn.marci.raft.common.Endpoint;
 import cn.marci.raft.common.Lifecycle;
 import cn.marci.raft.rpc.RpcException;
 import cn.marci.raft.serializer.SerializerSingleFactory;
+import cn.marci.raft.utils.ThreadPoolUtils;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.ChannelFuture;
@@ -75,8 +76,6 @@ public class ConnectionFactory implements Lifecycle {
         if (!future.isSuccess()) {
             if (log.isDebugEnabled()) {
                 log.error("Create connection error, endpoint:{}", endpoint, future.cause());
-            } else {
-                log.error("Create connection error, endpoint:{}", endpoint);
             }
             throw new RpcException("Create connection error", future.cause());
         }

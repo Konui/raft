@@ -20,7 +20,7 @@ public abstract class Timer implements Lifecycle {
         schedule();
     }
 
-    public void cancel() {
+    public void stop() {
         if (lastFuture != null) {
             lastFuture.cancel(false);
         }
@@ -39,8 +39,14 @@ public abstract class Timer implements Lifecycle {
         long delay = nextDelay();
         log.debug("{} timer will run after {} ms", timerName(), delay);
         lastFuture = scheduledThreadPoolExecutor.schedule(() -> {
-            run();
-            schedule();
+            try {
+                run();
+            } catch (Exception e) {
+                log.error( "{} timer error", timerName(), e);
+            }
+            if (isRepeatTask()) {
+                schedule();
+            }
         }, delay, TimeUnit.MILLISECONDS);
     }
 
@@ -52,4 +58,7 @@ public abstract class Timer implements Lifecycle {
 
     protected abstract long nextDelay();
 
+    protected boolean isRepeatTask() {
+        return true;
+    }
 }

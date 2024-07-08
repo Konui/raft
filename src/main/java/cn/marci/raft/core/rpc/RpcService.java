@@ -1,16 +1,19 @@
 package cn.marci.raft.core.rpc;
 
 import cn.marci.raft.common.Endpoint;
-import cn.marci.raft.core.rpc.dto.AppendEntriesDTO;
+import cn.marci.raft.core.rpc.dto.AppendEntriesRequest;
 import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
-import cn.marci.raft.core.rpc.dto.RequestVoteDTO;
+import cn.marci.raft.core.rpc.dto.RequestVoteRequest;
 import cn.marci.raft.core.rpc.dto.RequestVoteResponse;
-import cn.marci.raft.rpc.RpcClient;
+
+import java.util.concurrent.CompletableFuture;
 
 public interface RpcService {
 
-    AppendEntriesResponse appendEntries(Endpoint endpoint, AppendEntriesDTO appendEntries);
+    boolean connect(Endpoint endpoint);
 
-    RequestVoteResponse requestVote(Endpoint endpoint, RequestVoteDTO requestVoteDTO);
+    CompletableFuture<AppendEntriesResponse> appendEntries(Endpoint endpoint, AppendEntriesRequest appendEntries);
+
+    CompletableFuture<RequestVoteResponse> requestVote(Endpoint endpoint, RequestVoteRequest requestVoteRequest);
 
 }

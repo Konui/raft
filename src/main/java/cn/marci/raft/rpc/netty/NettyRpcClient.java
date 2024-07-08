@@ -21,30 +21,47 @@ public class NettyRpcClient implements RpcClient {
     }
 
     @Override
-    public Object invokeSync(Endpoint endpoint, long timeout, String signature, Object... args) {
+    public Object invokeSync(Endpoint endpoint, long timeout, Object arg, String interest) {
         long startTime = System.currentTimeMillis();
-        CompletableFuture future = invoke(endpoint, signature, args);
+        CompletableFuture future = invoke(endpoint, interest, arg);
         try {
             return future.get(timeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
-            log.error("RPC invoke error: {}", e.getMessage());
+            log.error("RPC invoke interest:{}, error: {}", interest, e.getMessage());
             throw new RpcException(e);
         } finally {
-            if (log.isDebugEnabled()) {
-                log.debug("RPC invoke cost: {}ms", System.currentTimeMillis() - startTime);
+            long cost = System.currentTimeMillis() - startTime;
+            if (cost > 100 || log.isDebugEnabled()) {
+                log.warn("RPC invoke cost: {}ms", cost);
             }
         }
     }
 
     @Override
-    public Object invokeAsync(Endpoint endpoint, String signature, Object... args) {
-        return invoke(endpoint, signature, args);
+    public Object invokeSync(Endpoint endpoint, long timeout, Object arg) {
+        if (arg == null) {
+            throw new IllegalArgumentException("arg is null, please use interest to invoke");
+        }
+        return invokeSync(endpoint, timeout, arg, arg.getClass().getName());
     }
 
-    private CompletableFuture invoke(Endpoint endpoint, String signature, Object... args) {
+    @Override
+    public CompletableFuture invokeAsync(Endpoint endpoint, Object arg) {
+        if (arg == null) {
+            throw new IllegalArgumentException("arg is null, please use interest to invoke");
+        }
+        return invokeAsync(endpoint, arg, arg.getClass().getName());
+    }
+
+    @Override
+    public CompletableFuture invokeAsync(Endpoint endpoint, Object arg, String interest) {
+        return invoke(endpoint, interest, arg);
+    }
+
+    private CompletableFuture invoke(Endpoint endpoint, String interest, Object arg) {
         Connection connection = connectionManager.getOrCreate(endpoint);
 
-        RpcRequest request = new RpcRequest(signature, args);
+        RpcRequest request = new RpcRequest(arg, interest);
 
         CompletableFuture completableFuture = connection.addInvokeFuture(request.getId(), new CompletableFuture<>());
 
@@ -56,6 +73,9 @@ public class NettyRpcClient implements RpcClient {
                 }
             }
         });
+        if (log.isDebugEnabled()) {
+            log.debug("RPC invoke{} interest:{}, arg:{}", endpoint, interest, arg);
+        }
         return completableFuture;
     }
 }

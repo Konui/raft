@@ -1,40 +1,44 @@
 package cn.marci.raft.core.rpc.impl;
 
 import cn.marci.raft.common.Endpoint;
-import cn.marci.raft.core.node.Node;
+import cn.marci.raft.core.rpc.RaftRpcFactory;
 import cn.marci.raft.core.rpc.RpcService;
-import cn.marci.raft.core.rpc.dto.AppendEntriesDTO;
+import cn.marci.raft.core.rpc.dto.AppendEntriesRequest;
 import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
-import cn.marci.raft.core.rpc.dto.RequestVoteDTO;
+import cn.marci.raft.core.rpc.dto.RequestVoteRequest;
 import cn.marci.raft.core.rpc.dto.RequestVoteResponse;
+import cn.marci.raft.rpc.RpcClient;
+import cn.marci.raft.rpc.RpcFactory;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 public class RpcServiceImpl implements RpcService {
 
-    private final Node node;
+    private final RpcClient rpcClient;
 
-    public RpcServiceImpl(Node node) {
-        this.node = node;
+    public RpcServiceImpl(RpcClient rpcClient) {
+        this.rpcClient = rpcClient;
     }
 
     @Override
-    public AppendEntriesResponse appendEntries(Endpoint endpoint, AppendEntriesDTO appendEntries) {
-        long start = System.currentTimeMillis();
+    public boolean connect(Endpoint endpoint) {
         try {
-            return node.handleAppendEntries(appendEntries);
-        } finally {
-            log.debug("appendEntries cost: {}ms", System.currentTimeMillis() - start);
+            RpcFactory.getInstance().connect(endpoint);
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 
     @Override
-    public RequestVoteResponse requestVote(Endpoint endpoint, RequestVoteDTO requestVoteDTO) {
-        long start = System.currentTimeMillis();
-        try {
-            return node.handleVote(requestVoteDTO);
-        } finally {
-            log.debug("requestVote cost: {}ms", System.currentTimeMillis() - start);
-        }
+    public CompletableFuture<AppendEntriesResponse> appendEntries(Endpoint endpoint, AppendEntriesRequest appendEntries) {
+        return rpcClient.invokeAsync(endpoint, appendEntries);
+    }
+
+    @Override
+    public CompletableFuture<RequestVoteResponse> requestVote(Endpoint endpoint, RequestVoteRequest requestVoteRequest) {
+        return rpcClient.invokeAsync(endpoint, requestVoteRequest);
     }
 }

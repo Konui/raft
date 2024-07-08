@@ -12,12 +12,20 @@ public class RpcRequest implements Serializable {
 
     private Long id = IDGenerator.nextId();
 
-    private String signature;
+    private Object arg;
 
-    private Object[] args;
+    private String interest;
 
-    public RpcRequest(String signature, Object[] args) {
-        this.signature = signature;
-        this.args = args;
+    public RpcRequest(Object arg) {
+        this.arg = arg;
+        if (arg == null) {
+            throw new IllegalArgumentException("Rpc request arg can't null");
+        }
+        this.interest = arg.getClass().getName();
+    }
+
+    public RpcRequest(Object arg, String interest) {
+        this.arg = arg;
+        this.interest = interest;
     }
 }

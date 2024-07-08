@@ -12,6 +12,10 @@ public class NetUtils {
         return "localhost".equals(ip) || "127.0.0.1".equals(ip);
     }
 
+    public static int getCpuCount() {
+        return Runtime.getRuntime().availableProcessors();
+    }
+
     public static String getLocalIp() {
         try {
             return InetAddress.getLocalHost().getHostAddress();

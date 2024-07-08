@@ -1,6 +1,7 @@
 package cn.marci.raft.rpc;
 
 import cn.marci.raft.common.Lifecycle;
+import io.netty.util.internal.StringUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +23,7 @@ public abstract class RpcServer implements Lifecycle {
 
     protected final AtomicBoolean running = new AtomicBoolean(false);
 
-    protected final ConcurrentHashMap<String, MethodMetadata> services = new ConcurrentHashMap<>();
+    protected final ConcurrentHashMap<String, UserProcessor> services = new ConcurrentHashMap<>();
 
     protected RpcServer(int port) {
         this.port = port;
@@ -50,45 +51,13 @@ public abstract class RpcServer implements Lifecycle {
 
     protected abstract void close();
 
-    public <T> void registerService(Class<T> intf, T service) {
-        if (service == null) {
-            throw new RpcException("service is null");
+    public void registerUserProcessor(UserProcessor userProcessor) {
+        if (StringUtil.isNullOrEmpty(userProcessor.interest())) {
+            throw new IllegalArgumentException("userProcessor interest is null or empty, class: " + userProcessor.getClass().getName());
         }
-        Method[] declaredMethods = service.getClass().getDeclaredMethods();
-
-        for (Method method : declaredMethods) {
-            String signature = generateSignature(intf, method);
-            if (services.containsKey(signature)) {
-                throw new RpcException(String.format("service %s already registered", signature));
-            }
-            services.put(signature, new MethodMetadata(service, method));
-        }
-    }
-
-    public static String generateSignature(Method method) {
-        return generateSignature(method.getDeclaringClass(), method);
-    }
-
-    public static String generateSignature(Class<?> clz, Method method) {
-        String paramsStr = Arrays.stream(method.getParameterTypes())
-                .map(Class::getName)
-                .collect(Collectors.joining(","));
-        return String.format("%s_%s_%s", clz.getName(), method.getName(), paramsStr);
-    }
-
-    @Data
-    @AllArgsConstructor
-    public static class MethodMetadata {
-        private final Object target;
-
-        private final Method method;
-
-        public Object invoke(Object[] args) {
-            try {
-                return method.invoke(target, args);
-            } catch (Exception e) {
-                throw new RpcException(e);
-            }
+        UserProcessor existProcess = services.putIfAbsent(userProcessor.interest(), userProcessor);
+        if (existProcess != null) {
+            throw new IllegalArgumentException("service already exist for " + userProcessor.interest());
         }
     }
 }

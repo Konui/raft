@@ -30,7 +30,7 @@ public class ElectTimer extends Timer {
 
     @Override
     protected void run() {
-        node.startElect();
+        node.handleElectTimeout();
     }
 
     @Override
