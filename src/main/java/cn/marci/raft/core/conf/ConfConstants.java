@@ -11,4 +11,8 @@ public interface ConfConstants {
     String RAFT_ELECTION_MAX_TIMEOUT = "raft.election.max.timeout";
 
     String RAFT_HEARTBEAT_INTERVAL = "raft.heartbeat.interval";
+
+    String RAFT_BATCH_SIZE = "raft.batch.size";
+
+    String RAFT_ENTRY_PATH = "raft.entry.path";
 }

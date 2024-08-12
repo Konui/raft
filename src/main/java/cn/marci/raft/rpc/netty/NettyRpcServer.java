@@ -40,7 +40,6 @@ public class NettyRpcServer extends RpcServer {
                     .childOption(ChannelOption.TCP_NODELAY, Boolean.TRUE)
                     .childOption(ChannelOption.SO_KEEPALIVE, Boolean.TRUE)
                     .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel socketChannel) throws Exception {

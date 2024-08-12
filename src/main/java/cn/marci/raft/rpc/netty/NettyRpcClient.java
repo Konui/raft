@@ -4,8 +4,10 @@ import cn.marci.raft.common.Endpoint;
 import cn.marci.raft.rpc.RpcClient;
 import cn.marci.raft.rpc.RpcException;
 import cn.marci.raft.rpc.RpcRequest;
+import cn.marci.raft.utils.ThreadPoolUtils;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import io.netty.util.HashedWheelTimer;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.CompletableFuture;
@@ -13,6 +15,8 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class NettyRpcClient implements RpcClient {
+    private static final Integer MAX_TIMEOUT = 1; // 1min
+    private static final HashedWheelTimer TIMER = new HashedWheelTimer(ThreadPoolUtils.getThreadFactory(true, "NettyRpcTimeoutTimer"), 1, TimeUnit.SECONDS, 60);
 
     private final ConnectionManager connectionManager;
 
@@ -73,6 +77,11 @@ public class NettyRpcClient implements RpcClient {
                 }
             }
         });
+
+        TIMER.newTimeout(timeout -> {
+            connection.remove(request.getId());
+        }, MAX_TIMEOUT, TimeUnit.MINUTES);
+
         if (log.isDebugEnabled()) {
             log.debug("RPC invoke{} interest:{}, arg:{}", endpoint, interest, arg);
         }

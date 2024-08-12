@@ -1,14 +1,11 @@
 package cn.marci.raft.core.rpc.impl;
 
 import cn.marci.raft.common.Endpoint;
-import cn.marci.raft.core.rpc.RaftRpcFactory;
 import cn.marci.raft.core.rpc.RpcService;
-import cn.marci.raft.core.rpc.dto.AppendEntriesRequest;
-import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
-import cn.marci.raft.core.rpc.dto.RequestVoteRequest;
-import cn.marci.raft.core.rpc.dto.RequestVoteResponse;
+import cn.marci.raft.core.rpc.dto.*;
 import cn.marci.raft.rpc.RpcClient;
 import cn.marci.raft.rpc.RpcFactory;
+import cn.marci.raft.rpc.netty.Connection;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.CompletableFuture;
@@ -33,6 +30,11 @@ public class RpcServiceImpl implements RpcService {
     }
 
     @Override
+    public Connection getConnection(Endpoint endpoint) {
+        return RpcFactory.getInstance().connect(endpoint);
+    }
+
+    @Override
     public CompletableFuture<AppendEntriesResponse> appendEntries(Endpoint endpoint, AppendEntriesRequest appendEntries) {
         return rpcClient.invokeAsync(endpoint, appendEntries);
     }
@@ -40,5 +42,15 @@ public class RpcServiceImpl implements RpcService {
     @Override
     public CompletableFuture<RequestVoteResponse> requestVote(Endpoint endpoint, RequestVoteRequest requestVoteRequest) {
         return rpcClient.invokeAsync(endpoint, requestVoteRequest);
+    }
+
+    @Override
+    public void addPeer(Endpoint from, ClusterRequest.AddPeerRequest request) {
+        rpcClient.invokeSync(from, 1000, request);
+    }
+
+    @Override
+    public void removePeer(Endpoint from, ClusterRequest.RemovePeerRequest request) {
+        rpcClient.invokeSync(from, 1000, request);
     }
 }

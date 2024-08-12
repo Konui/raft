@@ -1,15 +1,11 @@
 package cn.marci.raft.rpc;
 
 import cn.marci.raft.common.Endpoint;
-import cn.marci.raft.core.rpc.RpcService;
-import cn.marci.raft.core.rpc.impl.RpcServiceImpl;
-import cn.marci.raft.rpc.netty.ConnectionFactory;
-import cn.marci.raft.rpc.netty.ConnectionManager;
-import cn.marci.raft.rpc.netty.NettyRpcClient;
-import cn.marci.raft.rpc.netty.NettyRpcServer;
+import cn.marci.raft.common.Lifecycle;
+import cn.marci.raft.rpc.netty.*;
 import cn.marci.raft.serializer.SerializerSingleFactory;
 
-public class RpcFactory {
+public class RpcFactory implements Lifecycle {
 
     private final SerializerSingleFactory serializerFactory = new SerializerSingleFactory();
 
@@ -44,14 +40,24 @@ public class RpcFactory {
         rpcServer.registerUserProcessor(userProcessor);
     }
 
-    public void connect(Endpoint endpoint) {
-        connectionManager.getOrCreate(endpoint);
+    public Connection connect(Endpoint endpoint) {
+        return connectionManager.getOrCreate(endpoint);
     }
 
     public static RpcFactory getInstance() { return RpcFactoryHolder.INSTANCE; }
 
     private static class RpcFactoryHolder {
         private static final RpcFactory INSTANCE = new RpcFactory();
+    }
+
+    @Override
+    public void stop() {
+        if (rpcServer != null) {
+            rpcServer.stop();
+        }
+        if (connectionManager != null) {
+            connectionManager.stop();
+        }
     }
 
 }

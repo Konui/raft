@@ -27,7 +27,7 @@ public class VoteContext {
     public void init(long term, List<Endpoint> cluster) {
         this.term = term;
         this.votedSet.clear();
-        this.quorum = Math.ceilDiv(cluster.size(), 2);
+        this.quorum = cluster.size() / 2 + 1;
         this.granted = 0;
     }
 

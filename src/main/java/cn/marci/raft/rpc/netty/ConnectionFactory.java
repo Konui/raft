@@ -23,6 +23,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 @Slf4j
 public class ConnectionFactory implements Lifecycle {
+    private EventLoopGroup workGroup;
 
     private Bootstrap bootstrap;
 
@@ -34,7 +35,7 @@ public class ConnectionFactory implements Lifecycle {
 
     @Override
     public void start() {
-        EventLoopGroup workGroup = new NioEventLoopGroup();
+        workGroup = new NioEventLoopGroup();
 
         bootstrap = new Bootstrap();
         bootstrap.group(workGroup);
@@ -56,7 +57,7 @@ public class ConnectionFactory implements Lifecycle {
 
     @Override
     public void stop() {
-        Lifecycle.super.stop();
+        workGroup.shutdownGracefully();
     }
 
 

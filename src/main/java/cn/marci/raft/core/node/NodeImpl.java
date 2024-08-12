@@ -2,25 +2,38 @@ package cn.marci.raft.core.node;
 
 import cn.marci.raft.common.Endpoint;
 import cn.marci.raft.core.conf.RaftConf;
+import cn.marci.raft.core.log.LogEntry;
+import cn.marci.raft.core.log.LogId;
+import cn.marci.raft.core.log.LogManager;
+import cn.marci.raft.core.log.ReplicatorGroup;
+import cn.marci.raft.core.node.impl.FSMCallerImpl;
+import cn.marci.raft.core.node.impl.FileRaftMetaStorage;
 import cn.marci.raft.core.rpc.RaftRpcFactory;
 import cn.marci.raft.core.rpc.RpcService;
-import cn.marci.raft.core.rpc.dto.AppendEntriesRequest;
-import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
-import cn.marci.raft.core.rpc.dto.RequestVoteRequest;
-import cn.marci.raft.core.rpc.dto.RequestVoteResponse;
+import cn.marci.raft.core.rpc.dto.*;
 import cn.marci.raft.core.schedule.ElectTimer;
-import cn.marci.raft.core.schedule.SendHeartbeatTimer;
 import cn.marci.raft.core.schedule.Timer;
+import cn.marci.raft.rpc.RpcFactory;
+import cn.marci.raft.rpc.RpcResponse;
 import cn.marci.raft.utils.FutureUtils;
 import cn.marci.raft.utils.NetUtils;
 import cn.marci.raft.utils.ThreadPoolUtils;
+import com.lmax.disruptor.BlockingWaitStrategy;
+import com.lmax.disruptor.EventHandler;
+import com.lmax.disruptor.FatalExceptionHandler;
+import com.lmax.disruptor.dsl.Disruptor;
+import com.lmax.disruptor.dsl.ProducerType;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class NodeImpl implements Node {
@@ -41,6 +54,8 @@ public class NodeImpl implements Node {
 
     private volatile Endpoint votedFor;
 
+    private volatile long lastLeaderTimestamp;
+
     private VoteContext preVoteContext = new VoteContext(true);
 
     private VoteContext voteContext = new VoteContext(false);
@@ -53,28 +68,34 @@ public class NodeImpl implements Node {
 
     private Timer electTimer;
 
-    private Timer sendHeartbeatTimer;
-
     private Timer voteTimeoutTimer;
 
     private ReadWriteLock lock = new ReentrantReadWriteLock();
 
-    public NodeImpl() {
-        this(null);
-    }
+    private Disruptor<ApplyTaskEvent> applyDisruptor;
 
-    public NodeImpl(String group) {
+    private LogManager logManager;
+
+    private BallotBox ballotBox;
+
+    private FSMCaller fsmCaller;
+
+    private StateMachine sm;
+
+    private ReplicatorGroup replicatorGroup;
+
+    private RaftMetaStorage raftMetaStorage;
+
+    public NodeImpl(String group, StateMachine stateMachine) {
         this.group = group;
         this.conf = RaftConf.getInstance();
         this.rpcService = RaftRpcFactory.getInstance().getRpcService();
-        this.cluster.addAll(conf.getClusterNodes());
-        if (cluster.isEmpty()) {
-            throw new IllegalArgumentException("raft.nodes is null or empty");
-        }
+
         this.id = new Endpoint(NetUtils.getLocalIp(), conf.getRpcServerPort());
         this.nodeId = new NodeId(group, id);
+        this.cluster.add(id);
+
         this.electTimer = new ElectTimer(this, conf.getElectionMinTimeout(), conf.getElectionMaxTimeout());
-        this.sendHeartbeatTimer = new SendHeartbeatTimer(this, conf.getHeartbeatInterval());
         this.voteTimeoutTimer = new Timer() {
             @Override
             protected void run() {
@@ -84,7 +105,7 @@ public class NodeImpl implements Node {
                     return;
                 }
                 log.warn("Node {} vote timeout for term={}, become follower", id, term);
-                becomeFollower(term, false);
+                becomeFollower(term);
                 preVote();
             }
 
@@ -103,11 +124,72 @@ public class NodeImpl implements Node {
                 return false;
             }
         };
+
+        this.applyDisruptor = new Disruptor<>(ApplyTaskEvent::new,
+                1024,
+                ThreadPoolUtils.getThreadFactory(false, "apply-disruptor-"),
+                ProducerType.MULTI,
+                new BlockingWaitStrategy());
+        this.applyDisruptor.handleEventsWith(new ApplyTaskEventHandler());
+        this.applyDisruptor.setDefaultExceptionHandler(new FatalExceptionHandler());
+
+        this.sm = stateMachine;
+        this.ballotBox = new BallotBox();
+        this.logManager = new LogManager();
+        this.fsmCaller = new FSMCallerImpl();
+        this.raftMetaStorage = new FileRaftMetaStorage(String.format("./raft_meta/%s_%s.txt", group, id.toString().replaceAll("\\(|\\)", "")));
+        this.replicatorGroup = new ReplicatorGroup(group, id, logManager, this, this.term, ballotBox, rpcService);
     }
 
     @Override
     public void start() {
-        becomeFollower(0, false);
+        this.term = raftMetaStorage.getTerm();
+        this.votedFor = raftMetaStorage.getVotedFor();
+
+        CallbackQueue callbackQueue = new CallbackQueue();
+        this.ballotBox.init(fsmCaller, callbackQueue);
+        this.fsmCaller.init(callbackQueue, sm, logManager);
+        this.logManager.init(String.format("./log_entry/%s/%s", group, id.toString().replaceAll("\\(|\\)", "")));
+
+        this.applyDisruptor.start();
+        becomeFollower(this.term);
+        initClusterNodes();
+    }
+
+    @Override
+    public void stop() {
+        applyDisruptor.shutdown();
+        executor.shutdown();
+        removeCurrentNodeInCluster();
+        RpcFactory.getInstance().stop();
+    }
+
+    private void initClusterNodes() {
+        for (Endpoint endpoint : conf.getClusterNodes()) {
+            if (endpoint.equals(id)) {
+                continue;
+            }
+            if (!rpcService.connect(endpoint)) {
+                log.warn("Node {} connect to {} failed", id, endpoint);
+                continue;
+            }
+            addPeer(endpoint);
+            rpcService.addPeer(endpoint, new ClusterRequest.AddPeerRequest(group, id, endpoint));
+        }
+        log.info("Node {} init cluster nodes {}", id, cluster.stream().map(Objects::toString).collect(Collectors.joining(",")));
+    }
+
+    private void removeCurrentNodeInCluster() {
+        for (Endpoint endpoint : conf.getClusterNodes()) {
+            if (endpoint.equals(id)) {
+                continue;
+            }
+            if (!rpcService.connect(endpoint)) {
+                log.warn("Node {} connect to {} failed", id, endpoint);
+                continue;
+            }
+            rpcService.removePeer(endpoint, new ClusterRequest.RemovePeerRequest(group, id, endpoint));
+        }
     }
 
     @Override
@@ -117,12 +199,33 @@ public class NodeImpl implements Node {
 
     @Override
     public void addPeer(Endpoint endpoint) {
-        this.cluster.add(endpoint);
+        this.lock.writeLock().lock();
+        try {
+            if (cluster.contains(endpoint)) {
+                return;
+            }
+            log.info("Node {} add peer {}", id, endpoint);
+            this.cluster.add(endpoint);
+            if (role == RoleEnum.LEADER) {
+                replicatorGroup.addReplicator(endpoint);
+            }
+        } finally {
+            this.lock.writeLock().unlock();
+        }
     }
 
     @Override
     public void removePeer(Endpoint endpoint) {
-        this.cluster.remove(endpoint);
+        this.lock.writeLock().lock();
+        try {
+            log.info("Node {} remove peer {}", id, endpoint);
+            this.cluster.remove(endpoint);
+            if (role == RoleEnum.LEADER) {
+                replicatorGroup.removeReplicator(endpoint);
+            }
+        } finally {
+            this.lock.writeLock().unlock();
+        }
     }
 
     @Override
@@ -131,6 +234,9 @@ public class NodeImpl implements Node {
         this.lock.writeLock().lock();
         try {
             if (role != RoleEnum.FOLLOWER) {
+                return;
+            }
+            if (isCurrentLeaderValid()) {
                 return;
             }
             leaderId = null;
@@ -144,52 +250,13 @@ public class NodeImpl implements Node {
     }
 
     @Override
-    public void sendHeartBeat() {
-        lock.readLock().lock();
-        try {
-            if (role != RoleEnum.LEADER) {
-                return;
-            }
-            for (Endpoint endpoint : cluster) {
-                if (endpoint.equals(id)) {
-                    continue;
-                }
-                if (!rpcService.connect(endpoint)) {
-                    log.warn("Node {} connect to {} failed", id, endpoint);
-                    continue;
-                }
-                AppendEntriesRequest request = AppendEntriesRequest.builder()
-                        .term(term)
-                        .group(group)
-                        .leaderId(id)
-                        .toEndpoint(endpoint)
-                        .build();
-                CompletableFuture<Void> cf = rpcService.appendEntries(endpoint, request)
-                        .thenAcceptAsync(resp -> handleHeartBeatResponse(resp, endpoint), executor);
-                FutureUtils.addHandleExceptionStage(cf, log);
-            }
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    private void handleHeartBeatResponse(AppendEntriesResponse resp, Endpoint from) {
-        lock.writeLock().lock();
-        try {
-            if (resp.getTerm() > term) {
-                log.info("Node {} receive heartbeat response with higher term={} from {}, and will become follower", nodeId, resp.getTerm(), from);
-                becomeFollower(resp.getTerm(), false);
-            }
-        } finally {
-            lock.writeLock().unlock();
-        }
-    }
-
-    @Override
-    public AppendEntriesResponse handleAppendEntries(AppendEntriesRequest appendEntries) {
+    public AppendEntriesResponse handleAppendEntries(AppendEntriesRequest appendEntries, Consumer<Object> sendRpcRespCallback) {
         boolean doUnlock = true;
         lock.writeLock().lock();
         try {
+            if (log.isDebugEnabled()) {
+                log.debug("Node {} receive AppendEntriesRequest from {}, request:{}", nodeId, appendEntries.getLeaderId(), appendEntries);
+            }
             if (appendEntries.getTerm() < this.term) {
                 log.warn("Node {} ignore AppendEntriesRequest from {}, term={}, currentTerm={}", nodeId, appendEntries.getLeaderId(), appendEntries.getTerm(), term);
                 return AppendEntriesResponse.builder()
@@ -201,28 +268,43 @@ public class NodeImpl implements Node {
             if (!Objects.equals(leaderId, appendEntries.getLeaderId())) {
                 //集群有两个leader，自身降为follower 并且term加1重新选择leader
                 log.error("Node {} ignore AppendEntriesRequest from {} because cluster has more leader, term={}, currentTerm={}, current leader:{}", nodeId, appendEntries.getLeaderId(), appendEntries.getTerm(), term, leaderId);
-                becomeFollower(appendEntries.getTerm() + 1, false);
+                becomeFollower(appendEntries.getTerm() + 1);
                 return AppendEntriesResponse.builder()
                         .term(appendEntries.getTerm() + 1)
                         .success(false)
                         .build();
             }
 
-            //心跳
-            if (appendEntries.getEntries() == null || appendEntries.getEntries().isEmpty()) {
-                electTimer.reset();
+            lastLeaderTimestamp = System.currentTimeMillis();
+            long localLastTerm = logManager.getTerm(appendEntries.getPrevLogIndex());
+            if (appendEntries.getPrevLogTerm() != localLastTerm) {
+                long lastLogIndex = logManager.getLastLogIndex();
+                log.warn("Node {} ignore AppendEntriesRequest from {}, term={}, currentTerm={}, request last term={} and index={}, local term={} index={},current leader:{}",
+                        nodeId, appendEntries.getLeaderId(), appendEntries.getTerm(), term, appendEntries.getPrevLogTerm(), appendEntries.getPrevLogIndex(), localLastTerm, lastLogIndex, leaderId);
                 return AppendEntriesResponse.builder()
-                        .term(term)
-                        .success(true)
+                        .success(false)
+                        .term(this.term)
+                        .lastLogIndex(lastLogIndex)
                         .build();
             }
 
-            //TODO
-            log.error("Node {} ignore AppendEntriesRequest from {} because not implement, term={}, currentTerm={}, current leader:{}", nodeId, appendEntries.getLeaderId(), appendEntries.getTerm(), term, leaderId);
-            return AppendEntriesResponse.builder()
-                    .term(term)
-                    .success(false)
-                    .build();
+            //心跳
+            if (appendEntries.getEntries() == null || appendEntries.getEntries().isEmpty()) {
+                AppendEntriesResponse response = AppendEntriesResponse.builder()
+                        .term(term)
+                        .success(true)
+                        .lastLogIndex(logManager.getLastLogIndex())
+                        .build();
+                doUnlock = false;
+                this.lock.writeLock().unlock();
+                ballotBox.setLastCommittedIndex(Math.min(appendEntries.getLastCommittedIndex(), appendEntries.getPrevLogIndex()));
+                return response;
+            }
+            FollowerStableCallback followerStableCallback = new FollowerStableCallback(appendEntries, this.term, AppendEntriesResponse.builder().term(this.term), sendRpcRespCallback);
+            this.logManager.appendEntries(appendEntries.getEntries().stream()
+                    .map(EntryMeta::toLogEntry)
+                    .collect(Collectors.toList()), followerStableCallback);
+            return null;
         } finally {
             if (doUnlock) {
                 lock.writeLock().unlock();
@@ -240,15 +322,26 @@ public class NodeImpl implements Node {
                     log.info("Node {} received RequestVoteRequest from {}, term={}, currentTerm={}", nodeId, requestVoteRequest.getCandidateId(), requestVoteRequest.getTerm(), term);
                     if (requestVoteRequest.getTerm() > this.term) {
                         //降级且更新term
-                        becomeFollower(requestVoteRequest.getTerm(), false);
+                        becomeFollower(requestVoteRequest.getTerm());
                     }
                 } else {
                     log.info("Node {} ignore RequestVoteRequest from {}, term={}, currentTerm={}", nodeId, requestVoteRequest.getCandidateId(), requestVoteRequest.getTerm(), term);
                     break;
                 }
-                //TODO check last LogId
-                if (votedFor == null ) {
+                doUnlock = false;
+                this.lock.writeLock().unlock();
+
+                LogId lastLogId = logManager.getLastLogId();
+
+                doUnlock = true;
+                this.lock.writeLock().lock();
+                if (requestVoteRequest.getTerm() != this.term) {
+                    break;
+                }
+                boolean logIsOk = new LogId(requestVoteRequest.getLastLogTerm(), requestVoteRequest.getLastLogIndex()).compareTo(lastLogId) >= 0;
+                if (logIsOk && votedFor == null) {
                     this.votedFor = requestVoteRequest.getCandidateId();
+                    this.raftMetaStorage.setVotedFor(requestVoteRequest.getCandidateId());
                 }
             } while (false);
             return RequestVoteResponse.builder()
@@ -270,12 +363,23 @@ public class NodeImpl implements Node {
         try {
             boolean granted = false;
             do {
+                if (leaderId != null && isCurrentLeaderValid()) {
+                    log.info("Node {} ignore PreVoteRequest from {}, term={}, currentTerm={}, current leader:{}", nodeId, requestVoteRequest.getCandidateId(), requestVoteRequest.getTerm(), term, leaderId);
+                    break;
+                }
                 if (requestVoteRequest.getTerm() < term) {
                     log.info("Node {} ignore PreVoteRequest from {}, term={}, currentTerm={}", nodeId, requestVoteRequest.getCandidateId(), requestVoteRequest.getTerm(), term);
                     break;
                 }
-                //TODO check last logId
-                granted = true;
+                doUnlock = false;
+                this.lock.writeLock().unlock();
+
+                LogId lastLogId = logManager.getLastLogId();
+
+                doUnlock = true;
+                this.lock.writeLock().lock();
+                LogId requestId = new LogId(requestVoteRequest.getLastLogTerm(), requestVoteRequest.getLastLogIndex());
+                granted = requestId.compareTo(lastLogId) >= 0;
                 log.info("Node {} received PreVoteRequest from {}, term={}, currentTerm={}", nodeId, requestVoteRequest.getCandidateId(), requestVoteRequest.getTerm(), term);
             } while (false);
             return RequestVoteResponse.builder()
@@ -291,9 +395,7 @@ public class NodeImpl implements Node {
     }
 
 
-
     private void preVote() {
-        //TODO 获取lastLogId
         long oldTerm;
         try {
             log.info("Node {} start preVote, term={}", id, term);
@@ -301,6 +403,8 @@ public class NodeImpl implements Node {
         } finally {
             lock.writeLock().unlock();
         }
+
+        LogId lastLogId = logManager.getLastLogId();
 
         boolean doUnlock = true;
         lock.writeLock().lock();
@@ -325,8 +429,8 @@ public class NodeImpl implements Node {
                         .group(group)
                         .term(term + 1)
                         .candidateId(id)
-//                        .lastLogIndex()
-//                        .lastLogTerm()
+                        .lastLogTerm(lastLogId.getTerm())
+                        .lastLogIndex(lastLogId.getIndex())
                         .toEndpoint(endpoint)
                         .build();
                 CompletableFuture<Void> cf = rpcService.requestVote(endpoint, request)
@@ -359,7 +463,7 @@ public class NodeImpl implements Node {
             }
             if (resp.getTerm() > this.term) {
                 log.warn("Node {} ignore preVoteResponse from {}, term: {}, except term: {}", nodeId, resp.getFrom(), resp.getTerm(), this.term);
-                becomeFollower(resp.getTerm(), false);
+                becomeFollower(resp.getTerm());
                 return;
             }
             log.info("Node {} receive preVoteResponse from {}, term:{}, voteGranted: {}", nodeId, resp.getFrom(), this.term, resp.isVoteGranted());
@@ -390,7 +494,7 @@ public class NodeImpl implements Node {
             }
             if (resp.getTerm() > this.term) {
                 log.warn("Node {} ignore VoteResponse from {}, term: {}, except term: {}", nodeId, resp.getFrom(), resp.getTerm(), this.term);
-                becomeFollower(resp.getTerm(), false);
+                becomeFollower(resp.getTerm());
                 return;
             }
             if (resp.isVoteGranted()) {
@@ -405,6 +509,7 @@ public class NodeImpl implements Node {
     }
 
     private void electSelf() {
+        long oldTerm;
         try {
             log.info("Node {} start to elect self, term:{}", nodeId, term);
             if (role == RoleEnum.FOLLOWER) {
@@ -416,6 +521,19 @@ public class NodeImpl implements Node {
             votedFor = id;
             voteTimeoutTimer.start();
             voteContext.init(term, cluster);
+            oldTerm = this.term;
+        } finally {
+            lock.writeLock().unlock();
+        }
+
+        LogId lastLogId = this.logManager.getLastLogId();
+
+        lock.writeLock().lock();
+        try {
+            if (oldTerm != this.term) {
+                return;
+            }
+
             for (Endpoint endpoint : cluster) {
                 if (endpoint.equals(id)) {
                     continue;
@@ -429,13 +547,15 @@ public class NodeImpl implements Node {
                         .group(group)
                         .term(term)
                         .candidateId(id)
+                        .lastLogTerm(lastLogId.getTerm())
+                        .lastLogIndex(lastLogId.getIndex())
                         .toEndpoint(endpoint)
                         .build();
                 CompletableFuture<Void> cf = rpcService.requestVote(endpoint, request)
                         .thenAcceptAsync(resp -> handleVoteResponse(resp, term), executor);
                 FutureUtils.addHandleExceptionStage(cf, log);
             }
-            //TODO storage vote info
+            raftMetaStorage.setTermAndVotedFor(this.term, this.id);
             this.voteContext.grant(id);
             if (this.voteContext.isGranted()) {
                 becomeLeader();
@@ -448,21 +568,23 @@ public class NodeImpl implements Node {
     private void checkTerm(long requestTerm, Endpoint from) {
         if (requestTerm > this.term) {
             log.warn("Node {} receive request from new leader {}, term: {}, current term: {}", nodeId, from, requestTerm, this.term);
-            becomeFollower(requestTerm, false);
-        } else if (this.role != RoleEnum.FOLLOWER) {
+            becomeFollower(requestTerm);
+        } else if (this.role == RoleEnum.CANDIDATE) {
             log.warn("Candidate Node {} receive request from {}, term: {}", nodeId, from, requestTerm);
-            becomeFollower(requestTerm, false);
+            becomeFollower(requestTerm);
         } else if (leaderId == null) {
             log.warn("Follower Node {} receive request from {}, term: {}", nodeId, from, requestTerm);
-            becomeFollower(requestTerm, false);
+            becomeFollower(requestTerm);
         }
         leaderId = from;
     }
 
     //方法在writeLock中
-    private void becomeFollower(long term, boolean wakeupCandidate) {
+    private void becomeFollower(long term) {
         if (role == RoleEnum.CANDIDATE) {
             voteTimeoutTimer.stop();
+        } else if (role == RoleEnum.LEADER) {
+            this.ballotBox.clearPendingTasks();
         }
 
         this.leaderId = null;
@@ -471,9 +593,11 @@ public class NodeImpl implements Node {
         if (term > this.term) {
             this.term = term;
             this.votedFor = null;
+            raftMetaStorage.setTermAndVotedFor(this.term, this.votedFor);
         }
-        sendHeartbeatTimer.stop();
+        replicatorGroup.stopAll();
         electTimer.reset();
+        fsmCaller.onLeaderStop();
         log.info("Node {} become follower, term: {}, current term: {}", id, term, this.term);
     }
 
@@ -485,9 +609,169 @@ public class NodeImpl implements Node {
 
         this.role = RoleEnum.LEADER;
         this.leaderId = id;
+        this.replicatorGroup.resetTerm(this.term);
+        for (Endpoint endpoint : this.cluster) {
+            if (id.equals(endpoint)) {
+                continue;
+            }
+            if (!replicatorGroup.addReplicator(endpoint)) {
+                log.error("add replicator {} failed", endpoint);
+            }
+        }
+        this.ballotBox.resetPendingIndex(this.logManager.getLastLogIndex() + 1);
 
         this.electTimer.stop();
-        this.sendHeartbeatTimer.start();
+        fsmCaller.onLeaderStart(this.term);
         log.info("Node {} become leader, term: {}", id, term);
+    }
+
+    private boolean isCurrentLeaderValid() {
+        return System.currentTimeMillis() - this.lastLeaderTimestamp < this.conf.getElectionMinTimeout();
+    }
+
+    @Override
+    public void apply(Task task) {
+        if (task == null || task.getDoneCf() == null) {
+            throw new IllegalArgumentException("task is null or done CompletableFuture is null");
+        }
+        LogEntry logEntry = new LogEntry();
+        logEntry.setData(task.getData());
+
+        applyDisruptor.getRingBuffer().publishEvent((event, sequence) -> {
+            event.reset();
+            event.setExceptedTerm(task.getExceptedTerm());
+            event.setLogEntry(logEntry);
+            event.setDoneCf(task.getDoneCf());
+        });
+        if (log.isDebugEnabled()) {
+            log.debug("Node {} published apply task", id);
+        }
+    }
+
+    @Data
+    private static class ApplyTaskEvent {
+        private long exceptedTerm;
+        private CompletableFuture<?> doneCf;
+        private LogEntry logEntry;
+
+        public void reset() {
+            this.exceptedTerm = -1;
+            this.doneCf = null;
+            this.logEntry = null;
+        }
+    }
+
+    private class ApplyTaskEventHandler implements EventHandler<ApplyTaskEvent> {
+
+        private List<ApplyTaskEvent> list = new ArrayList<>(NodeImpl.this.conf.getBatchSize());
+
+        @Override
+        public void onEvent(ApplyTaskEvent event, long sequence, boolean endOfBatch) throws Exception {
+            list.add(event);
+
+            if (list.size() >= NodeImpl.this.conf.getBatchSize() || endOfBatch) {
+                executeApplyEvent(list);
+                list.forEach(ApplyTaskEvent::reset);
+                list.clear();
+            }
+        }
+    }
+
+    private void executeApplyEvent(List<ApplyTaskEvent> tasks) {
+        this.lock.writeLock().lock();
+        try {
+            if (role != RoleEnum.LEADER) {
+                log.error("Node {} execute apply event failed, because this node not leader, role: {}", id, role);
+                tasks.forEach(event -> event.doneCf.completeExceptionally(new IllegalStateException("current node is not leader")));
+                return;
+            }
+            List<LogEntry> list = new ArrayList<>(tasks.size());
+            for (ApplyTaskEvent task : tasks) {
+                if (task.exceptedTerm != -1 && task.exceptedTerm != term) {
+                    log.error("Node {} execute apply event failed, because except term not current term, exceptedTerm: {}, currentTerm: {}", id, task.exceptedTerm, term);
+                    task.doneCf.completeExceptionally(new IllegalStateException("term is not match, exceptedTerm: " + task.exceptedTerm + ", currentTerm: " + term));
+                    task.reset();
+                    continue;
+                }
+                ballotBox.appendPendingTask(cluster, task.doneCf);
+
+                task.logEntry.getId().setTerm(term);
+                list.add(task.logEntry);
+                task.reset();
+            }
+            logManager.appendEntries(list, new LeaderStableCallback(list));
+        } finally {
+            this.lock.writeLock().unlock();
+        }
+    }
+
+    class LeaderStableCallback extends LogManager.StableCallback {
+
+        public LeaderStableCallback(List<LogEntry> entries) {
+            super(entries);
+        }
+
+        @Override
+        public void run(boolean success) {
+            int cnt = entries != null ? entries.size() : 0;
+            if (success) {
+                NodeImpl.this.ballotBox.commitAt(this.firstLogIndex, this.firstLogIndex + cnt - 1, NodeImpl.this.id);
+            } else {
+                log.error("Node{} append [{}, {}] entries failed", NodeImpl.this.id, this.firstLogIndex, this.firstLogIndex + cnt - 1);
+            }
+        }
+    }
+
+    class FollowerStableCallback extends LogManager.StableCallback {
+        private long committedIndex;
+        private long term;
+        private AppendEntriesResponse.AppendEntriesResponseBuilder responseBuilder;
+        private Consumer<Object> sendRpcRespCallback;
+
+        public FollowerStableCallback(AppendEntriesRequest request, long term, AppendEntriesResponse.AppendEntriesResponseBuilder responseBuilder, Consumer<Object> sendRpcRespCallback) {
+            super(null);
+            this.committedIndex = Math.min(
+                    request.getLastCommittedIndex(),
+                    request.getPrevLogIndex() + request.getEntries().size());
+            this.term = term;
+            this.responseBuilder = responseBuilder;
+            this.sendRpcRespCallback = sendRpcRespCallback;
+        }
+
+        @Override
+        protected void run(boolean success) {
+            if (!success) {
+                sendRpcRespCallback.accept(new RpcResponse(null, false, null, "append entries failed", null));
+                return;
+            }
+            NodeImpl.this.lock.readLock().lock();
+            try {
+                if (this.term != NodeImpl.this.term) {
+                    this.responseBuilder.success(false)
+                            .term(NodeImpl.this.term);
+                    sendRpcRespCallback.accept(this.responseBuilder.build());
+                    return;
+                }
+            } finally {
+                NodeImpl.this.lock.readLock().unlock();
+            }
+            this.responseBuilder.success(true)
+                    .term(this.term);
+            NodeImpl.this.ballotBox.setLastCommittedIndex(this.committedIndex);
+            sendRpcRespCallback.accept(this.responseBuilder.build());
+        }
+    }
+
+    @Override
+    public void increaseTermTo(long newTerm) {
+        this.lock.writeLock().lock();
+        try {
+            if (newTerm < this.term) {
+                return;
+            }
+            becomeFollower(newTerm);
+        } finally {
+            this.lock.writeLock().unlock();
+        }
     }
 }

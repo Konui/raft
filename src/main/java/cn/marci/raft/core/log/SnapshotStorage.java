@@ -1,4 +1,4 @@
 package cn.marci.raft.core.log;
 
-public class Entry {
+public interface SnapshotStorage {
 }

@@ -15,6 +15,10 @@ public class NodeManager {
         return INSTANCE;
     }
 
+    {
+        Runtime.getRuntime().addShutdownHook(new Thread(() ->  nodeMap.values().forEach(Node::stop)));
+    }
+
     public Node get(NodeId nodeId) {
         return nodeMap.get(nodeId);
     }
@@ -23,8 +27,8 @@ public class NodeManager {
         return get(new NodeId(group, endpoint));
     }
 
-    public Node create(String group) {
-        Node node = new NodeImpl(group);
+    public Node create(String group, StateMachine sm) {
+        Node node = new NodeImpl(group, sm);
         Node existNode = nodeMap.putIfAbsent(node.getNodeId(), node);
         if (existNode != null) {
             throw new IllegalArgumentException("node already exist:" + existNode.getNodeId());

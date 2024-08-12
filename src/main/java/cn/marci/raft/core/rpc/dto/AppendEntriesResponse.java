@@ -14,4 +14,8 @@ public class AppendEntriesResponse implements Serializable {
     private long term;
 
     private boolean success;
+
+    private long lastLogIndex;
+
+    private int errorCode;
 }

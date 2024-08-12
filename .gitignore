@@ -35,3 +35,7 @@ build/
 .DS_Store
 
 out/*
+
+
+./log_entry
+./raft_meta

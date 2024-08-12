@@ -1,11 +1,11 @@
 package cn.marci.raft.rpc.netty;
 
 import cn.marci.raft.common.Endpoint;
+import cn.marci.raft.common.Lifecycle;
 
-import java.security.interfaces.EdECKey;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class ConnectionManager {
+public class ConnectionManager implements Lifecycle {
 
     ConcurrentHashMap<Endpoint, Connection> connections = new ConcurrentHashMap<>();
 
@@ -25,4 +25,9 @@ public class ConnectionManager {
         return connection;
     }
 
+    @Override
+    public void stop() {
+        connections.values().forEach(Connection::stop);
+        connectionFactory.stop();
+    }
 }

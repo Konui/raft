@@ -2,6 +2,7 @@ package cn.marci.raft.utils;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -26,5 +27,15 @@ public class ThreadPoolUtils {
                 return thread;
             }
         };
+    }
+
+    public static ScheduledThreadPoolExecutor getPublicScheduledPool() {
+        return ScheduledThreadPoolHolder.INSTANCE.scheduledThreadPoolExecutor;
+    }
+
+    private static class ScheduledThreadPoolHolder {
+        private static final ScheduledThreadPoolHolder INSTANCE = new ScheduledThreadPoolHolder();
+
+        private ScheduledThreadPoolExecutor scheduledThreadPoolExecutor = new ScheduledThreadPoolExecutor(10, getThreadFactory(true, "scheduled-thread-pool"));
     }
 }

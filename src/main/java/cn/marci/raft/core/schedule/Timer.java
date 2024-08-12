@@ -22,14 +22,14 @@ public abstract class Timer implements Lifecycle {
 
     public void stop() {
         if (lastFuture != null) {
-            lastFuture.cancel(false);
+            lastFuture.cancel(true);
         }
         log.debug("{} timer cancel", timerName());
     }
 
     public void reset() {
         if (lastFuture != null) {
-            lastFuture.cancel(false);
+            lastFuture.cancel(true);
         }
         log.debug("{} timer reset", timerName());
         schedule();
@@ -48,6 +48,11 @@ public abstract class Timer implements Lifecycle {
                 schedule();
             }
         }, delay, TimeUnit.MILLISECONDS);
+    }
+
+    public void shutdown() {
+        stop();
+        scheduledThreadPoolExecutor.shutdown();
     }
 
     protected String timerName() {

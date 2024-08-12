@@ -7,6 +7,8 @@ import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
 import cn.marci.raft.core.rpc.dto.RequestVoteRequest;
 import cn.marci.raft.core.rpc.dto.RequestVoteResponse;
 
+import java.util.function.Consumer;
+
 public interface Node extends Lifecycle {
 
     NodeId getNodeId();
@@ -17,12 +19,14 @@ public interface Node extends Lifecycle {
 
     void handleElectTimeout();
 
-    void sendHeartBeat();
-
-    AppendEntriesResponse handleAppendEntries(AppendEntriesRequest appendEntries);
+    AppendEntriesResponse handleAppendEntries(AppendEntriesRequest appendEntries, Consumer<Object> sendRpcRespCallback);
 
     RequestVoteResponse handleVote(RequestVoteRequest requestVoteRequest);
 
     RequestVoteResponse handlePreVote(RequestVoteRequest requestVoteRequest);
+
+    void increaseTermTo(long term);
+
+    void apply(Task task);
 
 }

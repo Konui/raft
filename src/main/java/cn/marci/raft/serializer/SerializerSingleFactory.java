@@ -1,13 +1,15 @@
 package cn.marci.raft.serializer;
 
-import cn.marci.raft.common.SingleFactory;
 import cn.marci.raft.serializer.hessian.HessianSerializer;
 
-public class SerializerSingleFactory extends SingleFactory<Serializer> {
+public class SerializerSingleFactory {
 
-    @Override
-    protected Serializer createInstance() {
-        return new HessianSerializer();
+    public static Serializer getInstance() {
+        return InstanceHolder.INSTANCE;
+    }
+
+    private static class InstanceHolder {
+        private static final Serializer INSTANCE = new HessianSerializer();
     }
 
 }
