@@ -1,6 +1,7 @@
 package cn.marci.raft.core.rpc.dto;
 
 import cn.marci.raft.common.Endpoint;
+import cn.marci.raft.core.log.EntryMeta;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

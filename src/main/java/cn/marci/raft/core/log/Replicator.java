@@ -7,7 +7,6 @@ import cn.marci.raft.core.node.ErrorCode;
 import cn.marci.raft.core.rpc.RpcService;
 import cn.marci.raft.core.rpc.dto.AppendEntriesRequest;
 import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
-import cn.marci.raft.core.rpc.dto.EntryMeta;
 import cn.marci.raft.utils.FutureUtils;
 import cn.marci.raft.utils.ThreadPoolUtils;
 import lombok.extern.slf4j.Slf4j;

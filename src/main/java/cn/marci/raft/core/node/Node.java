@@ -7,6 +7,7 @@ import cn.marci.raft.core.rpc.dto.AppendEntriesResponse;
 import cn.marci.raft.core.rpc.dto.RequestVoteRequest;
 import cn.marci.raft.core.rpc.dto.RequestVoteResponse;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 public interface Node extends Lifecycle {
@@ -29,4 +30,5 @@ public interface Node extends Lifecycle {
 
     void apply(Task task);
 
+    List<Endpoint> getCluster();
 }

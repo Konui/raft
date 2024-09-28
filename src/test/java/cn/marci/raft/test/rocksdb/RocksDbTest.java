@@ -1,5 +1,6 @@
 package cn.marci.raft.test.rocksdb;
 
+import cn.marci.raft.core.log.EntryMeta;
 import cn.marci.raft.core.log.LogEntry;
 import cn.marci.raft.serializer.SerializerSingleFactory;
 import org.rocksdb.Options;
@@ -24,7 +25,7 @@ public class RocksDbTest {
         while (iterator.isValid()) {
             iterator.key();
             long index = ByteBuffer.wrap(iterator.key()).getLong();
-            LogEntry entry = LogEntry.deserialize(iterator.value());
+            LogEntry entry = EntryMeta.deserializeToLogEntry(iterator.value());
             System.out.printf("index:%d, LogId(term=%d, index=%d), data:%s%n", index, entry.getId().getTerm(), entry.getId().getIndex(), SerializerSingleFactory.getInstance().deserialize(entry.getData().array()).toString());
             iterator.next();
         }

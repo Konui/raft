@@ -2,10 +2,7 @@ package cn.marci.raft.core.node;
 
 import cn.marci.raft.common.Endpoint;
 import cn.marci.raft.core.conf.RaftConf;
-import cn.marci.raft.core.log.LogEntry;
-import cn.marci.raft.core.log.LogId;
-import cn.marci.raft.core.log.LogManager;
-import cn.marci.raft.core.log.ReplicatorGroup;
+import cn.marci.raft.core.log.*;
 import cn.marci.raft.core.node.impl.FSMCallerImpl;
 import cn.marci.raft.core.node.impl.FileRaftMetaStorage;
 import cn.marci.raft.core.rpc.RaftRpcFactory;
@@ -26,6 +23,7 @@ import com.lmax.disruptor.dsl.ProducerType;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -226,6 +224,11 @@ public class NodeImpl implements Node {
         } finally {
             this.lock.writeLock().unlock();
         }
+    }
+
+    @Override
+    public List<Endpoint> getCluster() {
+        return new ArrayList<>(this.cluster);
     }
 
     @Override
@@ -636,6 +639,7 @@ public class NodeImpl implements Node {
         }
         LogEntry logEntry = new LogEntry();
         logEntry.setData(task.getData());
+        logEntry.setType(LogType.DATA);
 
         applyDisruptor.getRingBuffer().publishEvent((event, sequence) -> {
             event.reset();

@@ -1,6 +1,7 @@
 package cn.marci.raft.core.log.impl;
 
 import cn.marci.raft.common.Lifecycle;
+import cn.marci.raft.core.log.EntryMeta;
 import cn.marci.raft.core.log.LogEntry;
 import cn.marci.raft.core.log.LogStorage;
 import lombok.extern.slf4j.Slf4j;
@@ -87,7 +88,7 @@ public class RocksDBLogStorage implements LogStorage, Lifecycle {
             if (bytes == null) {
                 return null;
             }
-            return LogEntry.deserialize(bytes);
+            return EntryMeta.deserializeToLogEntry(bytes);
         } catch (Exception e) {
             log.error("get log entry failed, path: {}, index: {}", filePath, index, e);
         } finally {
@@ -103,7 +104,7 @@ public class RocksDBLogStorage implements LogStorage, Lifecycle {
         }
         this.lock.writeLock().lock();
         try {
-            db.put(LogEntry.serializeIndex(entry.getId().getIndex()), LogEntry.serialize(entry));
+            db.put(LogEntry.serializeIndex(entry.getId().getIndex()), EntryMeta.serializeForLogEntry(entry));
         } catch (Exception e) {
             log.error("append log entry failed, path: {}", filePath, e);
         } finally {
@@ -121,7 +122,7 @@ public class RocksDBLogStorage implements LogStorage, Lifecycle {
             WriteOptions writeOptions = new WriteOptions();
             WriteBatch writeBatch = new WriteBatch();
             for (LogEntry entry : entries) {
-                writeBatch.put(LogEntry.serializeIndex(entry.getId().getIndex()), LogEntry.serialize(entry));
+                writeBatch.put(LogEntry.serializeIndex(entry.getId().getIndex()), EntryMeta.serializeForLogEntry(entry));
             }
             db.write(writeOptions, writeBatch);
             if (log.isDebugEnabled()) {
